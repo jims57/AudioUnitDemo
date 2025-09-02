@@ -16,6 +16,8 @@ NS_ASSUME_NONNULL_BEGIN
 -(void)startRecord:(NSString *)filePath aecOn:(BOOL)aecOn;
 -(void)stopRecord;
 -(BOOL)isStated;
+
+// Reference signal methods
 @end
 
 NS_ASSUME_NONNULL_END

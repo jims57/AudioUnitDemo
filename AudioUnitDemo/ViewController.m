@@ -71,8 +71,18 @@
     if([self.audioUnitAECRecorder isStated]){
         [self.audioUnitAECRecorder stopRecord];
     }else{
-        NSString *filePath = [self getAECVoiceFilePath];
-        [self.audioUnitAECRecorder startRecord:filePath aecOn:true];
+        // Ensure the player is playing to provide a reference signal for AEC.
+        if(!self.audioUnitPlayer.isStarted){
+            NSString *filePath = [self getVoiceFilePath];
+            BOOL fileExists = [[NSFileManager defaultManager] fileExistsAtPath:filePath];
+            if(fileExists){
+                [self.audioUnitPlayer startPlay:filePath loop:true];
+            }
+        }
+        
+        // Start AEC recording. The player will continue playing.
+        NSString *recordPath = [self getAECVoiceFilePath];
+        [self.audioUnitAECRecorder startRecord:recordPath aecOn:true];
     }
 }
 
@@ -107,9 +117,7 @@
 - (void)aecRecorderDidStop{
     [self.btnAECRecord setTitle:@"AEC录音" forState:UIControlStateNormal];
     
-    if(self.audioUnitPlayer.isStarted){
-        [self.audioUnitPlayer stopPlay];
-    }
+    // The player continues playing, so no need to stop any reference signal.
 }
 
 - (void)playerDidStart:(int)type{

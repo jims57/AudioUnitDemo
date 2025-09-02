@@ -1,0 +1,102 @@
+CLIENT OF UIKIT REQUIRES UPDATE: This process does not adopt UIScene lifecycle. This will become an assert in a future version.
+已经拥有麦克风权限
+App is being debugged, do not track this hang
+Hang detected: 0.35s (debugger attached, not reporting)
+audio,record stop
+InitUnitFlow
+
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+已经拥有麦克风权限
+App is being debugged, do not track this hang
+Hang detected: 0.72s (debugger attached, not reporting)
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+AECAudioInputCallback
+throwing -1
+  from AU (0x101af1680): auou/vpio/appl, render err: -1
+PlayCallBack,realLength=1
+AECAudioInputCallback
+throwing -1
+  from AU (0x101af1680): auou/vpio/appl, render err: -1
+PlayCallBack,realLength=1
+AECAudioInputCallback
+throwing -1
+  from AU (0x101af1680): auou/vpio/appl, render err: -1
+PlayCallBack,realLength=1
+AECAudioInputCallback
+throwing -1
+  from AU (0x101af1680): auou/vpio/appl, render err: -1
+PlayCallBack,realLength=1
+AECAudioInputCallback
+throwing -1
+  from AU (0x101af1680): auou/vpio/appl, render err: -1
+PlayCallBack,realLength=1
+AECAudioInputCallback
+throwing -1
+  from AU (0x101af1680): auou/vpio/appl, render err: -1
+PlayCallBack,realLength=1
+AECAudioInputCallback
+throwing -1
+  from AU (0x101af1680): auou/vpio/appl, render err: -1
+audio,record stop
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+App is being debugged, do not track this hang
+Hang detected: 0.41s (debugger attached, not reporting)

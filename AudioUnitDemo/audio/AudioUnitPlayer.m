@@ -120,7 +120,16 @@ static OSStatus PlayCallBack(
 
 #pragma mark - AudioUnitInitMethod
 - (void)initAudioSession {
-    
+    AVAudioSession *audioSession = [AVAudioSession sharedInstance];
+    NSError *error = nil;
+    [audioSession setCategory:AVAudioSessionCategoryPlayback error:&error];
+    if (error) {
+        NSLog(@"Audio session category error: %@", error.localizedDescription);
+    }
+    [audioSession setActive:YES error:&error];
+    if (error) {
+        NSLog(@"Audio session activate error: %@", error.localizedDescription);
+    }
 }
 
 -(void)initAudioUnit{
@@ -134,15 +143,15 @@ static OSStatus PlayCallBack(
     AudioComponent outputComponent = AudioComponentFindNext(NULL, &outputDesc);
     AudioComponentInstanceNew(outputComponent, &remoteIOUnit);
     
-    // Enable IO for playing（kAudioUnitScope_Input ==> recording）
-    //     uint32_t flag = 1;
-    //    OSStatus status = AudioUnitSetProperty(remoteIOUnit,
-    //                                   kAudioOutputUnitProperty_EnableIO,
-    //                                   kAudioUnitScope_Output, //【播放必定选kAudioUnitScope_Output!!!】
-    //                                   0,
-    //                                   &flag,
-    //                                   sizeof(flag));
-    //     CheckError(status,"kAudioOutputUnitProperty_EnableIO error");//若是负值则不通过；
+    // Enable IO for playing
+    UInt32 flag = 1;
+    OSStatus status = AudioUnitSetProperty(remoteIOUnit,
+                                   kAudioOutputUnitProperty_EnableIO,
+                                   kAudioUnitScope_Output,
+                                   0,
+                                   &flag,
+                                   sizeof(flag));
+    CheckError(status,"kAudioOutputUnitProperty_EnableIO error");
     
     
 }

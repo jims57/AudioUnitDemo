@@ -1,0 +1,101 @@
+CLIENT OF UIKIT REQUIRES UPDATE: This process does not adopt UIScene lifecycle. This will become an assert in a future version.
+已经拥有麦克风权限
+App is being debugged, do not track this hang
+Hang detected: 0.34s (debugger attached, not reporting)
+audio,record stop
+InitUnitFlow
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+已经拥有麦克风权限
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+App is being debugged, do not track this hang
+Hang detected: 0.82s (debugger attached, not reporting)
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+AECAudioInputCallback
+throwing -1
+  from AU (0x1064d0640): auou/vpio/appl, render err: -1
+PlayCallBack,realLength=1
+AECAudioInputCallback
+throwing -1
+  from AU (0x1064d0640): auou/vpio/appl, render err: -1
+PlayCallBack,realLength=1
+AECAudioInputCallback
+throwing -1
+  from AU (0x1064d0640): auou/vpio/appl, render err: -1
+PlayCallBack,realLength=1
+AECAudioInputCallback
+throwing -1
+  from AU (0x1064d0640): auou/vpio/appl, render err: -1
+PlayCallBack,realLength=1
+AECAudioInputCallback
+（(ignore many logs here, cuz it is too long. actually)
+throwing -1
+  from AU (0x1064d0640): auou/vpio/appl, render err: -1
+PlayCallBack,realLength=1
+AECAudioInputCallback
+throwing -1
+  from AU (0x1064d0640): auou/vpio/appl, render err: -1
+PlayCallBack,realLength=1
+AECAudioInputCallback
+throwing -1
+  from AU (0x1064d0640): auou/vpio/appl, render err: -1
+PlayCallBack,realLength=1
+AECAudioInputCallback
+throwing -1
+  from AU (0x1064d0640): auou/vpio/appl, render err: -1
+PlayCallBack,realLength=1
+AECAudioInputCallback
+throwing -1
+  from AU (0x1064d0640): auou/vpio/appl, render err: -1
+PlayCallBack,realLength=1
+AECAudioInputCallback
+throwing -1
+  from AU (0x1064d0640): auou/vpio/appl, render err: -1
+PlayCallBack,realLength=1
+AECAudioInputCallback
+throwing -1
+  from AU (0x1064d0640): auou/vpio/appl, render err: -1
+PlayCallBack,realLength=1
+AECAudioInputCallback
+throwing -1
+  from AU (0x1064d0640): auou/vpio/appl, render err: -1
+PlayCallBack,realLength=1
+AECAudioInputCallback
+throwing -1
+  from AU (0x1064d0640): auou/vpio/appl, render err: -1
+PlayCallBack,realLength=1
+AECAudioInputCallback
+throwing -1
+  from AU (0x1064d0640): auou/vpio/appl, render err: -1
+audio,record stop
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+App is being debugged, do not track this hang
+Hang detected: 0.38s (debugger attached, not reporting)
+InitUnitFlow
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+（(ignore many logs here, cuz it is too long. actually)
+PlayCallBack,realLength=1
+PlayCallBack,realLength=0
+PlayCallBack,播放完毕

@@ -1,0 +1,389 @@
+iOS设备上回声消除的例子
+ 
+
+工业上的声音处理中，回声消除是一个重要的话题，重要性不亚于噪声消除、人声放大、自动增益等，尤其是在VoIP功能上，回声消除是每一个做VoIP功能团队的必修课。QQ、Skype等等，回声消除的效果是一个重要的考查指标。
+
+具体的回声消除算法比较复杂，我现在还没有研究的很明白。简单来说，就是在即将播放出来的声音中，将回声的那部分减去。其中一个关键，是如何估计回声大小，这需要用到自适应算法。研究不透，多说无益。有兴趣的同学可以一起学习。
+
+Apple在Core Audio中提供了回声消除的接口，我写了一个测试APP，测试了其效果。链接：https://github.com/lixing123/iOSEchoCancellation 
+下面讲一下如何实现。
+
+将声音输出route到speaker，这样声音比较大，回声明显：
+
+ 
+AVAudioSession* session = [AVAudioSession sharedInstance];
+
+[session overrideOutputAudioPort:AVAudioSessionPortOverrideSpeaker error:nil];
+
+[session setActive:YES error:nil];
+
+初始化一个AUGraph，创建一个AUNode，并将之添加到graph上。一般来说，沟通麦克风/扬声器的AUNode，其类型应该是RemoteIO，但是RemoteIO不带回声消除功能，VoiceProcessingIO类型的才带。
+
+ 
+AudioComponentDescription inputcd = {0};
+
+inputcd.componentType = kAudioUnitType_Output;
+
+//inputcd.componentSubType = kAudioUnitSubType_RemoteIO;
+
+//we can access the system's echo cancellation by using kAudioUnitSubType_VoiceProcessingIO subtype
+
+inputcd.componentSubType = kAudioUnitSubType_VoiceProcessingIO;
+
+inputcd.componentManufacturer = kAudioUnitManufacturer_Apple;
+
+配置AudioUnit的属性，打开与麦克风/扬声器的连接（这个比较难以理解，可以参考Apple文档：https://developer.apple.com/library/ios/documentation/MusicAudio/Conceptual/AudioUnitHostingGuide_iOS/UsingSpecificAudioUnits/UsingSpecificAudioUnits.html），并配置client data format(仅支持Linear PCM格式)；配置回调函数。
+
+ 
+//Open input of the bus 1(input mic)
+
+UInt32 enableFlag = 1;
+
+CheckError(AudioUnitSetProperty(myStruct->remoteIOUnit,
+
+kAudioOutputUnitProperty_EnableIO,
+
+kAudioUnitScope_Input,
+
+1,
+
+&enableFlag,
+
+sizeof(enableFlag)),
+
+"Open input of bus 1 failed");
+
+ 
+//Open output of bus 0(output speaker)
+
+CheckError(AudioUnitSetProperty(myStruct->remoteIOUnit,
+
+kAudioOutputUnitProperty_EnableIO,
+
+kAudioUnitScope_Output,
+
+0,
+
+&enableFlag,
+
+sizeof(enableFlag)),
+
+"Open output of bus 0 failed");
+
+ 
+//Set up stream format for input and output
+
+streamFormat.mFormatID = kAudioFormatLinearPCM;
+
+streamFormat.mFormatFlags = kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked;
+
+streamFormat.mSampleRate = 44100;
+
+streamFormat.mFramesPerPacket = 1;
+
+streamFormat.mBytesPerFrame = 2;
+
+streamFormat.mBytesPerPacket = 2;
+
+streamFormat.mBitsPerChannel = 16;
+
+streamFormat.mChannelsPerFrame = 1;
+
+ 
+CheckError(AudioUnitSetProperty(myStruct->remoteIOUnit,
+
+kAudioUnitProperty_StreamFormat,
+
+kAudioUnitScope_Input,
+
+0,
+
+&streamFormat,
+
+sizeof(streamFormat)),
+
+"kAudioUnitProperty_StreamFormat of bus 0 failed");
+
+ 
+CheckError(AudioUnitSetProperty(myStruct->remoteIOUnit,
+
+kAudioUnitProperty_StreamFormat,
+
+kAudioUnitScope_Output,
+
+1,
+
+&streamFormat,
+
+sizeof(streamFormat)),
+
+"kAudioUnitProperty_StreamFormat of bus 1 failed");
+
+ 
+//Set up input callback
+
+AURenderCallbackStruct input;
+
+input.inputProc = InputCallback;
+
+input.inputProcRefCon = myStruct;
+
+CheckError(AudioUnitSetProperty(myStruct->remoteIOUnit,
+
+kAudioUnitProperty_SetRenderCallback,
+
+kAudioUnitScope_Global,
+
+0,//input mic
+
+&input,
+
+sizeof(input)),
+
+"kAudioUnitProperty_SetRenderCallback failed");
+
+在回调函数inputCallback中，用AudioUnitRender() 函数获取麦克风的声音，存在一个bufferList中。这个bufferList是一个ring结构，存储最新的声音，然后播放旧声音。这样，声音的输入和输出之间，就有了0.5s（可调节）左右的延迟，形成了明显的回声。
+
+给回声消除添加一个开关。VoiceProcessingIO有一个属性可用来打开/关闭回声消除功能：kAUVoiceIOProperty_BypassVoiceProcessing
+
+ 
+UInt32 echoCancellation;
+
+UInt32 size = sizeof(echoCancellation);
+
+CheckError(AudioUnitGetProperty(myStruct.remoteIOUnit,
+
+kAUVoiceIOProperty_BypassVoiceProcessing,
+
+kAudioUnitScope_Global,
+
+0,
+
+&echoCancellation,
+
+&size),
+
+"kAUVoiceIOProperty_BypassVoiceProcessing failed");
+
+现在可以开始graph了：
+
+ 
+CheckError(AUGraphInitialize(graph),
+
+"AUGraphInitialize failed");
+
+CheckError(AUGraphStart(graph),
+
+"AUGraphStart failed");
+
+在示例中，有一个简单的开关按钮，可以明显感觉到打开/关闭回声消除的区别。
+
+在实测中，打开回声消除功能时，仍然能听到一点点的回声，不过很小，一般情况下足够使用了。
+
+ 
+
+ 
+
+ 
+
+工业上的声音处理中，回声消除是一个重要的话题，重要性不亚于噪声消除、人声放大、自动增益等，尤其是在VoIP功能上，回声消除是每一个做VoIP功能团队的必修课。QQ、Skype等等，回声消除的效果是一个重要的考查指标。
+
+具体的回声消除算法比较复杂，我现在还没有研究的很明白。简单来说，就是在即将播放出来的声音中，将回声的那部分减去。其中一个关键，是如何估计回声大小，这需要用到自适应算法。研究不透，多说无益。有兴趣的同学可以一起学习。
+
+Apple在Core Audio中提供了回声消除的接口，我写了一个测试APP，测试了其效果。链接：https://github.com/lixing123/iOSEchoCancellation
+下面讲一下如何实现。
+
+将声音输出route到speaker，这样声音比较大，回声明显：
+
+AVAudioSession* session = [AVAudioSession sharedInstance];
+[session overrideOutputAudioPort:AVAudioSessionPortOverrideSpeaker error:nil];
+[session setActive:YES error:nil];
+AI写代码
+1
+2
+3
+初始化一个AUGraph，创建一个AUNode，并将之添加到graph上。一般来说，沟通麦克风/扬声器的AUNode，其类型应该是RemoteIO，但是RemoteIO不带回声消除功能，VoiceProcessingIO类型的才带。
+
+AudioComponentDescription inputcd = {0};
+inputcd.componentType = kAudioUnitType_Output;
+//inputcd.componentSubType = kAudioUnitSubType_RemoteIO;
+//we can access the system's echo cancellation by using kAudioUnitSubType_VoiceProcessingIO subtype
+inputcd.componentSubType = kAudioUnitSubType_VoiceProcessingIO;
+inputcd.componentManufacturer = kAudioUnitManufacturer_Apple;
+AI写代码
+1
+2
+3
+4
+5
+6
+配置AudioUnit的属性，打开与麦克风/扬声器的连接（这个比较难以理解，可以参考Apple文档：https://developer.apple.com/library/ios/documentation/MusicAudio/Conceptual/AudioUnitHostingGuide_iOS/UsingSpecificAudioUnits/UsingSpecificAudioUnits.html），并配置client data format(仅支持Linear PCM格式)；配置回调函数。
+
+//Open input of the bus 1(input mic)
+UInt32 enableFlag = 1;
+CheckError(AudioUnitSetProperty(myStruct->remoteIOUnit,
+                            kAudioOutputUnitProperty_EnableIO,
+                            kAudioUnitScope_Input,
+                            1,
+                            &enableFlag,
+                            sizeof(enableFlag)),
+       "Open input of bus 1 failed");
+ 
+//Open output of bus 0(output speaker)
+CheckError(AudioUnitSetProperty(myStruct->remoteIOUnit,
+                            kAudioOutputUnitProperty_EnableIO,
+                            kAudioUnitScope_Output,
+                            0,
+                            &enableFlag,
+                            sizeof(enableFlag)),
+       "Open output of bus 0 failed");
+ 
+//Set up stream format for input and output
+streamFormat.mFormatID = kAudioFormatLinearPCM;
+streamFormat.mFormatFlags = kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked;
+streamFormat.mSampleRate = 44100;
+streamFormat.mFramesPerPacket = 1;
+streamFormat.mBytesPerFrame = 2;
+streamFormat.mBytesPerPacket = 2;
+streamFormat.mBitsPerChannel = 16;
+streamFormat.mChannelsPerFrame = 1;
+ 
+CheckError(AudioUnitSetProperty(myStruct->remoteIOUnit,
+                            kAudioUnitProperty_StreamFormat,
+                            kAudioUnitScope_Input,
+                            0,
+                            &streamFormat,
+                            sizeof(streamFormat)),
+       "kAudioUnitProperty_StreamFormat of bus 0 failed");
+ 
+CheckError(AudioUnitSetProperty(myStruct->remoteIOUnit,
+                            kAudioUnitProperty_StreamFormat,
+                            kAudioUnitScope_Output,
+                            1,
+                            &streamFormat,
+                            sizeof(streamFormat)),
+       "kAudioUnitProperty_StreamFormat of bus 1 failed");
+ 
+//Set up input callback
+AURenderCallbackStruct input;
+input.inputProc = InputCallback;
+input.inputProcRefCon = myStruct;
+CheckError(AudioUnitSetProperty(myStruct->remoteIOUnit,
+                            kAudioUnitProperty_SetRenderCallback,
+                            kAudioUnitScope_Global,
+                            0,//input mic
+                            &input,
+                            sizeof(input)),
+       "kAudioUnitProperty_SetRenderCallback failed");
+AI写代码
+
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51
+52
+53
+54
+55
+56
+在回调函数inputCallback中，用AudioUnitRender() 函数获取麦克风的声音，存在一个bufferList中。这个bufferList是一个ring结构，存储最新的声音，然后播放旧声音。这样，声音的输入和输出之间，就有了0.5s（可调节）左右的延迟，形成了明显的回声。
+
+给回声消除添加一个开关。VoiceProcessingIO有一个属性可用来打开/关闭回声消除功能：kAUVoiceIOProperty_BypassVoiceProcessing
+
+UInt32 echoCancellation;
+UInt32 size = sizeof(echoCancellation);
+CheckError(AudioUnitGetProperty(myStruct.remoteIOUnit,
+                            kAUVoiceIOProperty_BypassVoiceProcessing,
+                            kAudioUnitScope_Global,
+                            0,
+                            &echoCancellation,
+                            &size),
+       "kAUVoiceIOProperty_BypassVoiceProcessing failed");
+AI写代码
+1
+2
+3
+4
+5
+6
+7
+8
+9
+现在可以开始graph了：
+
+CheckError(AUGraphInitialize(graph),
+       "AUGraphInitialize failed");
+CheckError(AUGraphStart(graph),
+       "AUGraphStart failed");
+AI写代码
+1
+2
+3
+4
+在示例中，有一个简单的开关按钮，可以明显感觉到打开/关闭回声消除的区别。
+
+在实测中，打开回声消除功能时，仍然能听到一点点的回声，不过很小，一般情况下足够使用了。
+
+ 
+
+iOS 音频-AVAudioSession
+iOS音频掌柜-- AVAudioSession
+
+在WebRTC应用中，AudioUnit 使用的是Voice-Processing I / O unit (subtype kAudioUnitSubType_VoiceProcessingIO)，使用内置的aec和agc等功能， AVAudioSession状态：
+Category = AVAudioSessionCategoryPlayAndRecord，Mode = AVAudioSessionModeVoiceChat，无须显式的setMode,使用 Voice-Processing I / O unit 会自动切换为 VoiceChat，至于Options依实际业务情景需求设置。
+
+Category 切换成 AVAudioSessionCategoryPlayback：
+那么AudioUnit record cb 有回调，但是获取到的是静音数据。
+使用AVAudioPlayer播放音频文件，音量非常低：
+可以通过调整mode解决, 播放音频文件时设置为 AVAudioSessionModeDefault，待播放完毕之后再设置为 AVAudioSessionModeVoiceChat。但是这个缺点是，切换成 default mode 后 失去了回音消除功能了。
+然而，像狼人杀的场景，需要一直播放背景音乐，又需要对话过程中回音消除，那么就需要好好的维护好 mode 和 option了
+————————————————
+版权声明：本文为CSDN博主「hongge372」的原创文章，遵循CC 4.0 BY-SA版权协议，转载请附上原文出处链接及本声明。
+原文链接：https://blog.csdn.net/u010029439/article/details/112218289
