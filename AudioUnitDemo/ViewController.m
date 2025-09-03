@@ -49,21 +49,22 @@
     
 }
 
-//2.开始播放
+//2.开始播放 (使用统一VPIO)
 - (IBAction)play:(id)sender {
-    if(self.audioUnitPlayer.isStarted){
-        [self.audioUnitPlayer stopPlay];
+    if([self.audioUnitAECRecorder isPlaybackStarted]){
+        [self.audioUnitAECRecorder stopPlayback];
+        [self.btnPlay setTitle:@"开始播放" forState:UIControlStateNormal];
     }else{
         NSString *filePath = [self getVoiceFilePath];
         BOOL fileExists = [[NSFileManager defaultManager] fileExistsAtPath:filePath];
         if(fileExists){
-            [self.audioUnitPlayer startPlay:filePath loop:true];
+            [self.audioUnitAECRecorder startPlayback:filePath loop:true];
+            [self.btnPlay setTitle:@"停止播放" forState:UIControlStateNormal];
         }
-       
     }
 }
 
-//3.播放+录制(开启AEC过滤人声)
+//3.AEC录音(独立于播放)
 - (IBAction)aecRecord:(id)sender {
     if([self.audioUnitRecorder isStated]){
         return;
@@ -71,16 +72,7 @@
     if([self.audioUnitAECRecorder isStated]){
         [self.audioUnitAECRecorder stopRecord];
     }else{
-        // Ensure the player is playing to provide a reference signal for AEC.
-        if(!self.audioUnitPlayer.isStarted){
-            NSString *filePath = [self getVoiceFilePath];
-            BOOL fileExists = [[NSFileManager defaultManager] fileExistsAtPath:filePath];
-            if(fileExists){
-                [self.audioUnitPlayer startPlay:filePath loop:true];
-            }
-        }
-        
-        // Start AEC recording. The player will continue playing.
+        // Start AEC recording independently - no automatic playback
         NSString *recordPath = [self getAECVoiceFilePath];
         [self.audioUnitAECRecorder startRecord:recordPath aecOn:true];
     }
@@ -133,6 +125,15 @@
         [self.btnPlay setTitle:@"开始播放" forState:UIControlStateNormal];
     }else if(type==2){
         [self.btnAECPlay setTitle:@"AEC播放" forState:UIControlStateNormal];
+    }
+}
+
+// MARK: - Manual UI Updates for Unified VPIO Playback
+- (void)updatePlayButtonState {
+    if([self.audioUnitAECRecorder isPlaybackStarted]){
+        [self.btnPlay setTitle:@"停止播放" forState:UIControlStateNormal];
+    } else {
+        [self.btnPlay setTitle:@"开始播放" forState:UIControlStateNormal];
     }
 }
 

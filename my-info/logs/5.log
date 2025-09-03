@@ -1,0 +1,53 @@
+Error creating LLDB target at path '/Users/mac/Library/Developer/Xcode/DerivedData/AudioUnitDemo-foszwtpjjnylqrewyrvhyeduoeyb/Build/Products/Debug-iphoneos/AudioUnitDemo.app', target architecture: arm64 : '/Users/mac/Library/Developer/Xcode/DerivedData/AudioUnitDemo-foszwtpjjnylqrewyrvhyeduoeyb/Build/Products/Debug-iphoneos/AudioUnitDemo.app' does not exist.
+Using an empty LLDB target instead but this can cause slow memory reads.
+CLIENT OF UIKIT REQUIRES UPDATE: This process does not adopt UIScene lifecycle. This will become an assert in a future version.
+已经拥有麦克风权限
+App is being debugged, do not track this hang
+Hang detected: 0.35s (debugger attached, not reporting)
+audio,record stop
+Initializing AudioUnit for standalone playback
+Audio session mode set to Default for compatibility
+Sample rate set to 16kHz
+Buffer duration set to 20ms
+Successfully configured speaker output
+AudioUnit initialized with RemoteIO for recording
+Output format set successfully
+Output callback configured for AEC reference signal
+AudioUnit started successfully for standalone playback
+Ensured maximum speaker volume: 0.88 -> 0.9 for hands-free playback
+Re-forced speaker output for maximum hands-free volume
+Started unified VPIO playback: /var/mobile/Containers/Data/Application/A65B8215-0BCB-4E3E-9416-4AF83F9169E1/Documents/voice_record.pcm, loop: YES
+Stopping AudioUnit for standalone playback
+AudioUnit stopped successfully for standalone playback
+Stopped unified VPIO playback
+已经拥有麦克风权限
+Audio session mode set to Default for compatibility
+Sample rate set to 16kHz
+Buffer duration set to 20ms
+Successfully configured speaker output
+AudioUnit initialized with VoiceProcessingIO for recording
+Input format set successfully
+Output format set successfully
+AEC enabled for echo cancellation
+AGC disabled - AEC active without voice level adjustment
+Output muting disabled for continuous voice
+VoiceProcessingIO configured: AEC enabled, AGC disabled for voice preservation
+Output callback configured for AEC reference signal
+Forced speaker output for hands-free AEC recording
+Saved current volume: 0.84
+App is being debugged, do not track this hang
+Hang detected: 1.10s (debugger attached, not reporting)
+Restored volume to: 0.84
+Started unified VPIO playback: /var/mobile/Containers/Data/Application/A65B8215-0BCB-4E3E-9416-4AF83F9169E1/Documents/voice_record.pcm, loop: YES
+Stopped unified VPIO playback
+Volume restored to original level: 0.84
+InitUnitFlow
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+(ignore many logs here, cuz it is too long. actually)
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=1
+PlayCallBack,realLength=0
+PlayCallBack,播放完毕

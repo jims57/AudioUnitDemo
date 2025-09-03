@@ -18,15 +18,22 @@
 @interface AudioUnitAECRecorder(){
     AUNode remoteIONode;
     AudioUnit remoteIOUnit;
-    AudioStreamBasicDescription mAudioFormat;
+    AudioStreamBasicDescription audioFormat;
 }
 @property(nonatomic,assign) RecordState state;
 @property(nonatomic,copy) NSString *originAudioSessionCategory;
-@property(nonatomic,copy) NSString *filePath;
-@property(nonatomic,assign) FILE *file;
+@property(nonatomic,copy) NSString *recordFilePath;
+@property(nonatomic,assign) FILE *recordFile;
 @property(nonatomic,assign) BOOL isAecOn;//是否开启AEC
 @property(nonatomic,strong) MPVolumeView *volumeView;
 @property(nonatomic,assign) float savedVolume;
+@property(nonatomic,strong) NSTimer *volumeMaintenanceTimer;
+@property(nonatomic,strong) NSString *playbackFilePath;
+@property(nonatomic,assign) FILE *playbackFile;
+@property(nonatomic,assign) BOOL isPlaybackActive;
+@property(nonatomic,assign) BOOL shouldLoopPlayback;
+@property(nonatomic,assign) long playbackFileSize;
+@property(nonatomic,assign) long playbackCurrentPosition;
 @property(nonatomic,strong) NSMutableData *referenceAudioBuffer; // Buffer for reference signal
 
 @end
@@ -36,7 +43,7 @@
 -(id)init{
     self = [super init];
     if(self){
-        self.file = NULL;
+        self.recordFile = NULL;
         // Initialize volume view for programmatic volume control
         self.volumeView = [[MPVolumeView alloc] init];
         self.volumeView.hidden = YES; // Keep it hidden but functional
@@ -54,17 +61,50 @@
 /**
  AEC Output callback - provides reference signal for echo cancellation
  */
-OSStatus AECAudioOutputCallback(void *inRefCon,
-                               AudioUnitRenderActionFlags *ioActionFlags,
-                               const AudioTimeStamp *inTimeStamp,
-                               UInt32 inBusNumber,
-                               UInt32 inNumberFrames,
-                               AudioBufferList *ioData) {
-    // Fill output buffer with silence - VoiceProcessingIO needs this for AEC reference
-    // The actual playback is handled by the separate AudioUnitPlayer
-    for (UInt32 i = 0; i < ioData->mNumberBuffers; i++) {
-        memset(ioData->mBuffers[i].mData, 0, ioData->mBuffers[i].mDataByteSize);
+static OSStatus AECAudioOutputCallback(void *inRefCon,
+                                      AudioUnitRenderActionFlags *ioActionFlags,
+                                      const AudioTimeStamp *inTimeStamp,
+                                      UInt32 inBusNumber,
+                                      UInt32 inNumberFrames,
+                                      AudioBufferList *ioData) {
+    AudioUnitAECRecorder *recorder = (__bridge AudioUnitAECRecorder *)inRefCon;
+    
+    // Handle unified VPIO playback
+    if (recorder.isPlaybackActive && recorder.playbackFile) {
+        UInt32 bytesToRead = inNumberFrames * recorder->audioFormat.mBytesPerFrame;
+        
+        for (UInt32 i = 0; i < ioData->mNumberBuffers; i++) {
+            UInt32 bytesRead = (UInt32)fread(ioData->mBuffers[i].mData, 1, bytesToRead, recorder.playbackFile);
+            
+            if (bytesRead < bytesToRead) {
+                // Handle end of file
+                if (recorder.shouldLoopPlayback) {
+                    // Reset to beginning for loop
+                    fseek(recorder.playbackFile, 0, SEEK_SET);
+                    recorder.playbackCurrentPosition = 0;
+                    // Fill remaining buffer with beginning of file
+                    UInt32 remainingBytes = bytesToRead - bytesRead;
+                    if (remainingBytes > 0) {
+                        fread((char*)ioData->mBuffers[i].mData + bytesRead, 1, remainingBytes, recorder.playbackFile);
+                    }
+                } else {
+                    // Fill remaining buffer with silence and stop playback
+                    memset((char*)ioData->mBuffers[i].mData + bytesRead, 0, bytesToRead - bytesRead);
+                    recorder.isPlaybackActive = NO;
+                }
+            }
+            
+            ioData->mBuffers[i].mDataByteSize = bytesToRead;
+        }
+        
+        recorder.playbackCurrentPosition += inNumberFrames * recorder->audioFormat.mBytesPerFrame;
+    } else {
+        // Fill with silence when no playback
+        for (UInt32 i = 0; i < ioData->mNumberBuffers; i++) {
+            memset(ioData->mBuffers[i].mData, 0, ioData->mBuffers[i].mDataByteSize);
+        }
     }
+    
     return noErr;
 }
 
@@ -82,7 +122,7 @@ OSStatus AECAudioInputCallback(void *inRefCon,
      on this point we define the number of channels, which is mono
      for the iphone. the number of frames is usally 512 or 1024.
      */
-    UInt32 size = inNumberFrames * recorder->mAudioFormat.mBytesPerFrame;
+    UInt32 size = inNumberFrames * recorder->audioFormat.mBytesPerFrame;
     buffer.mDataByteSize = size; // sample size
     buffer.mNumberChannels = 1; // one channel
     buffer.mData = malloc(size); // buffer size
@@ -109,7 +149,7 @@ OSStatus AECAudioInputCallback(void *inRefCon,
 
 
 -(void)startRecord:(NSString *)filePath aecOn:(BOOL)aecOn{
-    self.filePath = filePath;
+    self.recordFilePath = filePath;
     self.isAecOn = aecOn;
     AVAudioSession *audioSession = [AVAudioSession sharedInstance];
     if ([audioSession respondsToSelector:@selector(requestRecordPermission:)]) {
@@ -140,10 +180,10 @@ OSStatus AECAudioInputCallback(void *inRefCon,
 
 
 - (void)writePCMData:(char *)buffer size:(int)size {
-    if (!self.file) {
-        self.file = fopen(self.filePath.UTF8String, "w");
+    if (!self.recordFile) {
+        self.recordFile = fopen(self.recordFilePath.UTF8String, "w");
     }
-    fwrite(buffer, size, 1, self.file);
+    fwrite(buffer, size, 1, self.recordFile);
 }
 
 
@@ -152,70 +192,69 @@ OSStatus AECAudioInputCallback(void *inRefCon,
     self.originAudioSessionCategory = audioSession.category;
     NSError *error = nil;
     
-    // Use PlayAndRecord with optimized options for AEC stability
-    NSUInteger sessionOptions = AVAudioSessionCategoryOptionDefaultToSpeaker | 
-                               AVAudioSessionCategoryOptionMixWithOthers |
-                               AVAudioSessionCategoryOptionAllowBluetooth |
-                               AVAudioSessionCategoryOptionAllowBluetoothA2DP;
+    // Deactivate session first to avoid conflicts
+    [audioSession setActive:NO error:nil];
     
-    [audioSession setCategory:AVAudioSessionCategoryPlayAndRecord 
-                  withOptions:sessionOptions
-                        error:&error];
-    if (error) {
+    NSUInteger sessionOptions = AVAudioSessionCategoryOptionDefaultToSpeaker | 
+                               AVAudioSessionCategoryOptionMixWithOthers;
+    
+    // Set category first
+    BOOL categorySuccess = [audioSession setCategory:AVAudioSessionCategoryPlayAndRecord 
+                                          withOptions:sessionOptions
+                                                error:&error];
+    if (!categorySuccess || error) {
         NSLog(@"Audio session category error: %@", error.localizedDescription);
-        return;
+        // Try simpler category
+        error = nil;
+        [audioSession setCategory:AVAudioSessionCategoryPlayAndRecord error:&error];
+        if (error) {
+            NSLog(@"Fallback category also failed: %@", error.localizedDescription);
+            return;
+        }
     }
 
-    // Use Default mode instead of VoiceChat to prevent voice suppression
+    // Set mode - try Default first for better compatibility
     [audioSession setMode:AVAudioSessionModeDefault error:&error];
     if (error) {
-        NSLog(@"Audio session mode error: %@", error.localizedDescription);
+        NSLog(@"Audio session Default mode error: %@", error.localizedDescription);
+        error = nil; // Clear error and continue
     } else {
-        NSLog(@"Audio session mode set to Default to preserve voice quality");
+        NSLog(@"Audio session mode set to Default for compatibility");
     }
     
-    // Set preferred sample rate to match AudioUnit (critical for AEC stability)
+    // Set sample rate with error handling
     [audioSession setPreferredSampleRate:16000 error:&error];
     if (error) {
         NSLog(@"Audio session sample rate error: %@", error.localizedDescription);
+        error = nil; // Clear error and continue
     } else {
-        NSLog(@"Sample rate set to 16kHz for VoiceProcessingIO compatibility");
+        NSLog(@"Sample rate set to 16kHz");
     }
     
-    // Set smaller buffer duration for better real-time performance
-    [audioSession setPreferredIOBufferDuration:0.01 error:&error];
+    // Set buffer duration with error handling
+    [audioSession setPreferredIOBufferDuration:0.02 error:&error];
     if (error) {
         NSLog(@"Audio session buffer duration error: %@", error.localizedDescription);
+        error = nil; // Clear error and continue
     } else {
-        NSLog(@"Buffer duration set to 10ms for low-latency AEC");
+        NSLog(@"Buffer duration set to 20ms");
     }
     
-    // Set maximum input gain to preserve voice levels during AEC
-    if ([audioSession isInputGainSettable]) {
-        [audioSession setInputGain:1.0 error:&error];
-        if (error) {
-            NSLog(@"Audio session input gain error: %@", error.localizedDescription);
-        } else {
-            NSLog(@"Input gain set to maximum (1.0) to preserve voice during AEC");
-        }
-    }
-    
-    // Activate session before setting output port
+    // Activate session
     [audioSession setActive:YES error:&error];
     if (error) {
         NSLog(@"Audio session activate error: %@", error.localizedDescription);
         return;
     }
     
-    // Force audio output to speaker for hands-free mode
+    // Force speaker output
     [audioSession overrideOutputAudioPort:AVAudioSessionPortOverrideSpeaker error:&error];
     if (error) {
         NSLog(@"Failed to override audio output to speaker: %@", error.localizedDescription);
     } else {
-        NSLog(@"Successfully configured hands-free speaker output for AEC recording");
+        NSLog(@"Successfully configured speaker output");
     }
     
-    // Add notification observer for audio session interruptions
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(handleAudioSessionInterruption:)
                                                  name:AVAudioSessionInterruptionNotification
@@ -229,7 +268,10 @@ OSStatus AECAudioInputCallback(void *inRefCon,
 -(void)initAudioUnit{
     AudioComponentDescription componentDesc;
     componentDesc.componentType = kAudioUnitType_Output;
-    if(self.isAecOn){
+    
+    // Use VoiceProcessingIO for unified playback/recording, RemoteIO for playback-only
+    BOOL useVPIO = self.isAecOn || self.isPlaybackActive;
+    if(useVPIO){
         componentDesc.componentSubType = kAudioUnitSubType_VoiceProcessingIO;
     }else{
         componentDesc.componentSubType = kAudioUnitSubType_RemoteIO;
@@ -244,8 +286,7 @@ OSStatus AECAudioInputCallback(void *inRefCon,
     
     UInt32 enableFlag = 1;
     
-    // Enable audio output on VoiceProcessingIO for proper AEC functionality
-    // VoiceProcessingIO requires both input AND output enabled for echo cancellation
+    // Always enable output for playback
     CheckError(AudioUnitSetProperty(remoteIOUnit,
                                     kAudioOutputUnitProperty_EnableIO,
                                     kAudioUnitScope_Output,
@@ -253,15 +294,21 @@ OSStatus AECAudioInputCallback(void *inRefCon,
                                     &enableFlag,
                                     sizeof(enableFlag)),
                "Enable output of bus 0 failed");
-    //开启麦克风
-    CheckError(AudioUnitSetProperty(remoteIOUnit,
-                                    kAudioOutputUnitProperty_EnableIO,
-                                    kAudioUnitScope_Input,
-                                    1,
-                                    &enableFlag,
-                                    sizeof(enableFlag)),
-               "Open input of bus 1 failed");
     
+    // Enable input only for recording or when AEC is on
+    if (self.isAecOn || self.state == STATE_START) {
+        CheckError(AudioUnitSetProperty(remoteIOUnit,
+                                        kAudioOutputUnitProperty_EnableIO,
+                                        kAudioUnitScope_Input,
+                                        1,
+                                        &enableFlag,
+                                        sizeof(enableFlag)),
+                   "Open input of bus 1 failed");
+    }
+    
+    NSLog(@"AudioUnit initialized with %@ for %@", 
+          useVPIO ? @"VoiceProcessingIO" : @"RemoteIO",
+          self.isPlaybackActive ? @"playback" : @"recording");
 }
 
 /**
@@ -269,35 +316,45 @@ OSStatus AECAudioInputCallback(void *inRefCon,
  */
 -(void)initFormat{
     // VoiceProcessingIO works best with 8kHz or 16kHz, mono, 16-bit
-    mAudioFormat.mSampleRate = 16000;
-    mAudioFormat.mFormatID = kAudioFormatLinearPCM;
-    mAudioFormat.mFormatFlags = kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked;
-    mAudioFormat.mReserved = 0;
-    mAudioFormat.mChannelsPerFrame = 1;
-    mAudioFormat.mBitsPerChannel = 16;
-    mAudioFormat.mFramesPerPacket = 1;
-    mAudioFormat.mBytesPerFrame = (mAudioFormat.mBitsPerChannel / 8) * mAudioFormat.mChannelsPerFrame;
-    mAudioFormat.mBytesPerPacket = mAudioFormat.mFramesPerPacket * mAudioFormat.mBytesPerFrame;
+    audioFormat.mSampleRate = 16000;
+    audioFormat.mFormatID = kAudioFormatLinearPCM;
+    audioFormat.mFormatFlags = kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked;
+    audioFormat.mReserved = 0;
+    audioFormat.mChannelsPerFrame = 1;
+    audioFormat.mBitsPerChannel = 16;
+    audioFormat.mFramesPerPacket = 1;
+    audioFormat.mBytesPerFrame = (audioFormat.mBitsPerChannel / 8) * audioFormat.mChannelsPerFrame;
+    audioFormat.mBytesPerPacket = audioFormat.mFramesPerPacket * audioFormat.mBytesPerFrame;
     
-    UInt32 size = sizeof(mAudioFormat);
+    UInt32 size = sizeof(audioFormat);
     
-    // Set format for microphone input (bus 1)
-    CheckError(AudioUnitSetProperty(remoteIOUnit,
-                                    kAudioUnitProperty_StreamFormat,
-                                    kAudioUnitScope_Output,
-                                    1,
-                                    &mAudioFormat,
-                                    size),
-               "Set input format failed");
+    // Set format for microphone input (bus 1) - only if input is enabled
+    if (self.isAecOn || self.state == STATE_START) {
+        OSStatus inputStatus = AudioUnitSetProperty(remoteIOUnit,
+                                        kAudioUnitProperty_StreamFormat,
+                                        kAudioUnitScope_Output,
+                                        1,
+                                        &audioFormat,
+                                        size);
+        if (inputStatus != noErr) {
+            NSLog(@"Set input format failed with error: %d", (int)inputStatus);
+        } else {
+            NSLog(@"Input format set successfully");
+        }
+    }
     
     // Set format for speaker output (bus 0)
-    CheckError(AudioUnitSetProperty(remoteIOUnit,
+    OSStatus outputStatus = AudioUnitSetProperty(remoteIOUnit,
                                     kAudioUnitProperty_StreamFormat,
                                     kAudioUnitScope_Input,
                                     0,
-                                    &mAudioFormat,
-                                    size),
-               "Set output format failed");
+                                    &audioFormat,
+                                    size);
+    if (outputStatus != noErr) {
+        NSLog(@"Set output format failed with error: %d", (int)outputStatus);
+    } else {
+        NSLog(@"Output format set successfully");
+    }
     
     // Configure VoiceProcessingIO for balanced AEC - echo removal with minimal voice suppression
     if (self.isAecOn) {
@@ -346,30 +403,29 @@ OSStatus AECAudioInputCallback(void *inRefCon,
 }
 
 - (void)initInputCallBack {
-    // Set input callback for recording
-    AURenderCallbackStruct inputCallbackStruct;
-    inputCallbackStruct.inputProc = AECAudioInputCallback;
-    inputCallbackStruct.inputProcRefCon = (__bridge void *)(self);
-    OSStatus status = AudioUnitSetProperty(remoteIOUnit, kAudioOutputUnitProperty_SetInputCallback, kAudioUnitScope_Output, 0, &inputCallbackStruct, sizeof(inputCallbackStruct));
-    CheckError(status, "设置采集回调失败");
-    
-    // Set output callback to provide reference signal for AEC
-    if (self.isAecOn) {
-        AURenderCallbackStruct outputCallbackStruct;
-        outputCallbackStruct.inputProc = AECAudioOutputCallback;
-        outputCallbackStruct.inputProcRefCon = (__bridge void *)(self);
-        OSStatus outputStatus = AudioUnitSetProperty(remoteIOUnit,
-                                                   kAudioUnitProperty_SetRenderCallback,
-                                                   kAudioUnitScope_Input,
-                                                   0,
-                                                   &outputCallbackStruct,
-                                                   sizeof(outputCallbackStruct));
-        CheckError(outputStatus, "设置输出回调失败");
-        NSLog(@"AEC output callback configured for reference signal");
+    // Set input callback only if recording or AEC is enabled
+    if (self.isAecOn || self.state == STATE_START) {
+        AURenderCallbackStruct inputCallbackStruct;
+        inputCallbackStruct.inputProc = AECAudioInputCallback;
+        inputCallbackStruct.inputProcRefCon = (__bridge void *)(self);
+        OSStatus status = AudioUnitSetProperty(remoteIOUnit, kAudioOutputUnitProperty_SetInputCallback, kAudioUnitScope_Output, 0, &inputCallbackStruct, sizeof(inputCallbackStruct));
+        CheckError(status, "设置采集回调失败");
     }
+    
+    // Always set output callback for playback (both standalone and with AEC)
+    AURenderCallbackStruct outputCallbackStruct;
+    outputCallbackStruct.inputProc = AECAudioOutputCallback;
+    outputCallbackStruct.inputProcRefCon = (__bridge void *)(self);
+    OSStatus outputStatus = AudioUnitSetProperty(remoteIOUnit,
+                                               kAudioUnitProperty_SetRenderCallback,
+                                               kAudioUnitScope_Input,
+                                               0,
+                                               &outputCallbackStruct,
+                                               sizeof(outputCallbackStruct));
+    CheckError(outputStatus, "设置输出回调失败");
+    NSLog(@"Output callback configured for %@", 
+          self.isPlaybackActive ? @"standalone playback" : @"AEC reference signal");
 }
-
-
 
 -(void)startRecord{
     CheckError(AudioUnitInitialize(remoteIOUnit),"AudioUnitInitialize error");
@@ -394,52 +450,44 @@ OSStatus AECAudioInputCallback(void *inRefCon,
 }
 
 - (void)stopRecord{
-    NSLog(@"audio,record stop");
     if(self.state == STATE_STOP){
-        NSLog(@"audio,in recorder stop, state has stopped!");
         return;
     }
-    
-    AudioOutputUnitStop(remoteIOUnit);
-    
-    //    AudioUnitUninitialize(remoteIOUnit);
-    
-    AudioComponentInstanceDispose(remoteIOUnit);
-    
-    // Restore original volume level
-    [self restoreVolume];
-    
-    [[AVAudioSession sharedInstance] setCategory:self.originAudioSessionCategory error:nil];
-    
     self.state = STATE_STOP;
     
-    self.file=NULL;
+    // Stop playback if active
+    [self stopPlayback];
     
-    [self.aecRecorderDelegate aecRecorderDidStop];
+    // Stop volume maintenance timer
+    if (self.volumeMaintenanceTimer) {
+        [self.volumeMaintenanceTimer invalidate];
+        self.volumeMaintenanceTimer = nil;
+    }
     
-    //    [self audioUnitStopPlay];
+    // Restore original volume
+    [self restoreOriginalVolume];
+    
+    OSStatus status = AudioOutputUnitStop(remoteIOUnit);
+    CheckError(status, "停止录音失败");
+    
+    if(self.recordFile){
+        fclose(self.recordFile);
+        self.recordFile = NULL;
+    }
+    
+    if(self.aecRecorderDelegate && [self.aecRecorderDelegate respondsToSelector:@selector(aecRecorderDidStop)]){
+        [self.aecRecorderDelegate aecRecorderDidStop];
+    }
+    
+    // Restore original audio session category
+    if (self.originAudioSessionCategory) {
+        NSError *error = nil;
+        [[AVAudioSession sharedInstance] setCategory:self.originAudioSessionCategory error:&error];
+        if (error) {
+            NSLog(@"Failed to restore original audio session category: %@", error.localizedDescription);
+        }
+    }
 }
-
-/**
- 运行时设置AEC开启和关闭
- */
--(void)setAecOn:(BOOL)aecOn{
-    NSLog(@"setAecOn:%d",aecOn);
-    self.isAecOn = aecOn;
-    
-    // 0 = enable AEC, 1 = bypass/disable AEC
-    UInt32 bypassFlag = aecOn ? 0 : 1;
-    CheckError(AudioUnitSetProperty(remoteIOUnit,
-                                    kAUVoiceIOProperty_BypassVoiceProcessing,
-                                    kAudioUnitScope_Global,
-                                    0,
-                                    &bypassFlag,
-                                    sizeof(bypassFlag)),
-               "Set AEC bypass failed");
-    NSLog(@"AEC bypass flag set to: %d (0=enabled, 1=disabled)", bypassFlag);
-}
-
-
 
 - (void)saveAndMaintainVolume {
     // Save current volume level
@@ -463,7 +511,7 @@ OSStatus AECAudioInputCallback(void *inRefCon,
     }
 }
 
-- (void)restoreVolume {
+- (void)restoreOriginalVolume {
     if (self.savedVolume > 0.0) {
         UISlider *volumeSlider = nil;
         for (UIView *view in self.volumeView.subviews) {
@@ -477,6 +525,31 @@ OSStatus AECAudioInputCallback(void *inRefCon,
             volumeSlider.value = self.savedVolume;
             NSLog(@"Volume restored to original level: %.2f", self.savedVolume);
         }
+    }
+}
+
+- (void)ensureMaximumSpeakerVolume {
+    UISlider *volumeSlider = nil;
+    for (UIView *view in self.volumeView.subviews) {
+        if ([view isKindOfClass:[UISlider class]]) {
+            volumeSlider = (UISlider *)view;
+            break;
+        }
+    }
+    
+    if (volumeSlider) {
+        float currentVolume = volumeSlider.value;
+        if (currentVolume < 0.9) {
+            volumeSlider.value = 0.9;
+            NSLog(@"Ensured maximum speaker volume: %.2f -> 0.9 for hands-free playback", currentVolume);
+        }
+    }
+    
+    NSError *error = nil;
+    AVAudioSession *session = [AVAudioSession sharedInstance];
+    [session overrideOutputAudioPort:AVAudioSessionPortOverrideSpeaker error:&error];
+    if (!error) {
+        NSLog(@"Re-forced speaker output for maximum hands-free volume");
     }
 }
 
@@ -502,9 +575,13 @@ OSStatus AECAudioInputCallback(void *inRefCon,
 
 -(void)dealloc{
     [[NSNotificationCenter defaultCenter] removeObserver:self];
-    if (self.file) {
-        fclose(self.file);
-        self.file = NULL;
+    if (self.recordFile) {
+        fclose(self.recordFile);
+        self.recordFile = NULL;
+    }
+    if (self.playbackFile) {
+        fclose(self.playbackFile);
+        self.playbackFile = NULL;
     }
 }
 
@@ -515,8 +592,109 @@ OSStatus AECAudioInputCallback(void *inRefCon,
 }
 
 -(BOOL)isStated{
-    return self.state==STATE_START;
+    return self.state == STATE_START;
 }
 
+// MARK: - Unified VPIO Playback Methods
+
+-(void)startPlayback:(NSString *)filePath loop:(BOOL)loop {
+    if (self.isPlaybackActive) {
+        [self stopPlayback];
+    }
+    
+    self.playbackFilePath = filePath;
+    self.shouldLoopPlayback = loop;
+    
+    // Open playback file
+    self.playbackFile = fopen(filePath.UTF8String, "r");
+    if (!self.playbackFile) {
+        NSLog(@"Failed to open playback file: %@", filePath);
+        return;
+    }
+    
+    // Get file size
+    fseek(self.playbackFile, 0, SEEK_END);
+    self.playbackFileSize = ftell(self.playbackFile);
+    fseek(self.playbackFile, 0, SEEK_SET);
+    self.playbackCurrentPosition = 0;
+    
+    // Initialize AudioUnit if not already initialized for recording
+    if (self.state != STATE_START) {
+        [self initializeAudioUnitForPlayback];
+    }
+    
+    self.isPlaybackActive = YES;
+    NSLog(@"Started unified VPIO playback: %@, loop: %@", filePath, loop ? @"YES" : @"NO");
+}
+
+-(void)stopPlayback {
+    if (!self.isPlaybackActive) {
+        return;
+    }
+    
+    self.isPlaybackActive = NO;
+    
+    if (self.playbackFile) {
+        fclose(self.playbackFile);
+        self.playbackFile = NULL;
+    }
+    
+    // Stop AudioUnit if only used for playback (not recording)
+    if (self.state != STATE_START) {
+        [self stopAudioUnitForPlayback];
+    }
+    
+    NSLog(@"Stopped unified VPIO playback");
+}
+
+-(BOOL)isPlaybackStarted {
+    return self.isPlaybackActive;
+}
+
+// MARK: - AudioUnit Management for Standalone Playback
+
+-(void)initializeAudioUnitForPlayback {
+    NSLog(@"Initializing AudioUnit for standalone playback");
+    
+    // Initialize audio session for playback
+    [self initAudioSession];
+    
+    // Initialize AudioUnit components
+    [self initAudioUnit];
+    [self initFormat];
+    [self initInputCallBack];
+    
+    // Initialize and start AudioUnit
+    CheckError(AudioUnitInitialize(remoteIOUnit), "AudioUnitInitialize for playback failed");
+    OSStatus status = AudioOutputUnitStart(remoteIOUnit);
+    CheckError(status, "AudioOutputUnitStart for playback failed");
+    
+    if (status == 0) {
+        NSLog(@"AudioUnit started successfully for standalone playback");
+        
+        // Ensure speaker output and volume for playback
+        [self ensureMaximumSpeakerVolume];
+    }
+}
+
+-(void)stopAudioUnitForPlayback {
+    NSLog(@"Stopping AudioUnit for standalone playback");
+    
+    OSStatus status = AudioOutputUnitStop(remoteIOUnit);
+    CheckError(status, "AudioOutputUnitStop for playback failed");
+    
+    if (status == 0) {
+        NSLog(@"AudioUnit stopped successfully for standalone playback");
+    }
+    
+    // Restore original audio session category
+    if (self.originAudioSessionCategory) {
+        NSError *error = nil;
+        [[AVAudioSession sharedInstance] setCategory:self.originAudioSessionCategory error:&error];
+        if (error) {
+            NSLog(@"Failed to restore original audio session category: %@", error.localizedDescription);
+        }
+    }
+}
 
 @end

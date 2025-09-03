@@ -1,0 +1,9 @@
+已经拥有麦克风权限
+    AVAudioSession_iOS.mm:3431  Failed to set mode: -50
+Audio session VoicePrompt mode error: The operation couldn’t be completed. (OSStatus error -50.)
+Audio session Default mode fallback error: The operation couldn’t be completed. (OSStatus error -50.)
+Audio session sample rate error: The operation couldn’t be completed. (OSStatus error -50.)
+Audio session buffer duration error: The operation couldn’t be completed. (OSStatus error -50.)
+Audio session activate error: The operation couldn’t be completed. (OSStatus error -50.)
+AudioUnit initialized with VoiceProcessingIO for recording
+Error: 设置输入格式失败 (-10877)

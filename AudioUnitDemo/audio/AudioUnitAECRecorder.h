@@ -17,9 +17,15 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic,strong) id<AECRecorderDelegate> aecRecorderDelegate;
 @property(nonatomic,weak) AudioUnitPlayer *referencePlayer; // For AEC reference signal
 
+// Recording methods
 -(void)startRecord:(NSString *)filePath aecOn:(BOOL)aecOn;
 -(void)stopRecord;
 -(BOOL)isStated;
+
+// Playback methods (unified VPIO)
+-(void)startPlayback:(NSString *)filePath loop:(BOOL)loop;
+-(void)stopPlayback;
+-(BOOL)isPlaybackStarted;
 
 @end
 

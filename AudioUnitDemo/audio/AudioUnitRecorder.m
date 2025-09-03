@@ -143,7 +143,6 @@ OSStatus AudioInputCallback(void *inRefCon,
     CheckError(status, "创建unit失败");
     
     UInt32 enableFlag = 1;
-    UInt32 unableFlag = 0;
     
     //关闭音频输出(默认是开启的)
     //    CheckError(AudioUnitSetProperty(remoteIOUnit,

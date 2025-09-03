@@ -1,0 +1,32 @@
+AVAudioSessionCategoryOptionMixWithOthers
+An option that indicates whether audio from this session mixes with audio from active sessions in other audio apps.
+iOS
+iPadOS
+Mac Catalyst
+macOS
+tvOS
+visionOS
+watchOS
+AVAudioSessionCategoryOptionMixWithOthers
+Discussion
+You can set this option explicitly only if the audio session category is AVAudioSessionCategoryPlayAndRecord, AVAudioSessionCategoryPlayback, or AVAudioSessionCategoryMultiRoute. If you set the audio session category to AVAudioSessionCategoryAmbient, the session automatically sets this option. Likewise, setting the AVAudioSessionCategoryOptionDuckOthers or AVAudioSessionCategoryOptionInterruptSpokenAudioAndMixWithOthers options also enables this option.
+
+Clearing this option and then activating your session interrupts other audio sessions. If you set this option, your app mixes its audio with audio playing in background apps, such as the Music app.
+
+See Also
+Getting Standard Session Options
+AVAudioSessionCategoryOptionDuckOthers
+An option that reduces the volume of other audio sessions while audio from this session plays.
+AVAudioSessionCategoryOptionInterruptSpokenAudioAndMixWithOthers
+An option that determines whether to pause spoken audio content from other sessions when your app plays its audio.
+AVAudioSessionCategoryOptionAllowBluetooth
+An option that determines whether Bluetooth hands-free devices appear as available input routes.
+Deprecated
+AVAudioSessionCategoryOptionAllowBluetoothA2DP
+An option that determines whether you can stream audio from this session to Bluetooth devices that support the Advanced Audio Distribution Profile (A2DP).
+AVAudioSessionCategoryOptionAllowAirPlay
+An option that determines whether you can stream audio from this session to AirPlay devices.
+AVAudioSessionCategoryOptionDefaultToSpeaker
+An option that determines whether audio from the session defaults to the built-in speaker instead of the receiver.
+AVAudioSessionCategoryOptionOverrideMutedMicrophoneInterruption
+An option that indicates whether the system interrupts the audio session when it mutes the built-in microphone.
